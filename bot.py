@@ -108,6 +108,36 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📅 WEEKLY REPORT (coming soon upgrade)")
 
 
+
+    # ================= SL HIT =================
+    if "SL" in text and "HIT" in text:
+
+        if not active_trade:
+            await update.message.reply_text("No active trade ❌")
+            return
+
+        entry = active_trade["entry"]
+        sl_price = active_trade["sl"]
+
+        if entry is None or sl_price is None:
+            await update.message.reply_text("No SL or entry found ❌")
+            return
+
+        # SL is opposite direction logic
+        if active_trade["direction"] == "BUY":
+            pips = (sl_price - entry) / 0.1
+        else:
+            pips = (entry - sl_price) / 0.1
+
+        await update.message.reply_text(
+            f"🚫 SL HIT\n"
+            f"Entry: {entry}\n"
+            f"SL: {sl_price}\n"
+            f"Loss: -{abs(pips):.1f} pips"
+        )
+        return
+        
+        
 # ------------------ RUN BOT ------------------
 
 app = Application.builder().token(TOKEN).build()
