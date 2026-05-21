@@ -7,7 +7,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 
 active_trade = None
 
-# ------------------ HELPERS ------------------
+# ------------------ EXTRACTORS ------------------
 
 def extract_zone(text):
     match = re.search(r"(\d+\.?\d*)\s*-\s*(\d+\.?\d*)", text)
@@ -25,8 +25,11 @@ def extract_sl(text):
     match = re.search(r"SL[^0-9]*([\d.]+)", text)
     return float(match.group(1)) if match else None
 
+# ------------------ GOLD PIP SYSTEM ------------------
+# 0.1 move = 1 pip (STANDARD SIGNAL GROUP STYLE)
+
 def calc_pips(entry, price):
-    return price - entry
+    return (price - entry) / 0.1
 
 
 # ------------------ MAIN HANDLER ------------------
@@ -36,7 +39,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text.upper()
 
-    # ================== NEW TRADE ==================
+    # ================= NEW TRADE =================
     if "BUY" in text or "SELL" in text:
         direction = "BUY" if "BUY" in text else "SELL"
 
@@ -61,24 +64,23 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ================== TP HIT (ONLY FORMAT: TP4 HIT) ==================
+    # ================= TP HIT =================
     if "TP" in text and "HIT" in text:
 
         if not active_trade:
             await update.message.reply_text("No active trade ❌")
             return
 
-        # ONLY accept clean format TP4 HIT
         match = re.search(r"TP\s*(\d+)", text)
 
         if not match:
-            await update.message.reply_text("Use: TP4 HIT (no numbers needed)")
+            await update.message.reply_text("Use format: TP4 HIT")
             return
 
         tp_index = int(match.group(1)) - 1
 
         if tp_index < 0 or tp_index >= len(active_trade["tp"]):
-            await update.message.reply_text("TP level not found in trade ❌")
+            await update.message.reply_text("TP level not found ❌")
             return
 
         tp_price = active_trade["tp"][tp_index]
@@ -98,18 +100,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ================== DAILY / WEEKLY (basic) ==================
+    # ================= BASIC REPORTS =================
     if text == "DAILY":
-        await update.message.reply_text("📊 DAILY REPORT\n(Upgrade coming soon)")
+        await update.message.reply_text("📊 DAILY REPORT (coming soon upgrade)")
 
     if text == "WEEKLY":
-        await update.message.reply_text("📅 WEEKLY REPORT\n(Upgrade coming soon)")
+        await update.message.reply_text("📅 WEEKLY REPORT (coming soon upgrade)")
 
 
-# ------------------ START BOT ------------------
+# ------------------ RUN BOT ------------------
 
 app = Application.builder().token(TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
 print("Bot running...")
 app.run_polling()
+
+
