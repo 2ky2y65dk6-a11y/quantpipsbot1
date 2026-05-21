@@ -26,8 +26,7 @@ def extract_sl(text):
     return float(match.group(1)) if match else None
 
 def calc_pips(entry, price):
-    # gold simplified system
-    return (price - entry) * 10000
+    return price - entry
 
 
 # ------------------ MAIN HANDLER ------------------
