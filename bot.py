@@ -1,68 +1,56 @@
 import os
-import re
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# store trades in memory (we improve later with database)
 trades = []
 
-def extract_price_range(text):
-    match = re.search(r"(\d+\.?\d*)\s*-\s*(\d+\.?\d*)", text)
-    if match:
-        return float(match.group(1)), float(match.group(2))
-    return None, None
+daily_trades = []
+weekly_trades = []
 
-def extract_prices(text):
-    return re.findall(r"\d+\.?\d*", text)
+def extract_price(text):
+    import re
+    nums = re.findall(r"\d+\.?\d*", text)
+    return [float(n) for n in nums]
 
 def calc_pips(entry, exit_price, direction):
-    if direction == "BUY":
-        return (exit_price - entry) * 10000
-    else:
-        return (entry - exit_price) * 10000
+    return (exit_price - entry) * 10000 if direction == "BUY" else (entry - exit_price) * 10000
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
+    chat_id = update.message.chat_id
 
-    # detect BUY or SELL signal
+    # ---------------- SIGNAL DETECTION ----------------
     if "BUY" in text or "SELL" in text:
         direction = "BUY" if "BUY" in text else "SELL"
+        prices = extract_price(text)
 
-        # extract entry zone (e.g. 4522.50 - 4518.50)
-        high, low = extract_price_range(text)
+        if prices:
+            entry = prices[0]
 
-        if high and low:
-            entry = (high + low) / 2  # middle of zone
-        else:
-            prices = extract_prices(text)
-            entry = float(prices[0]) if prices else None
+            trade = {
+                "direction": direction,
+                "entry": entry,
+                "time": datetime.now()
+            }
 
-        if entry:
-            trades.append((direction, entry))
-            await update.message.reply_text(
-                f"{direction} recorded\nEntry: {entry:.2f}"
-            )
-        else:
-            await update.message.reply_text("No valid entry found")
+            trades.append(trade)
+            daily_trades.append(trade)
+            weekly_trades.append(trade)
 
-    # close trade manually
-    elif text.startswith("CLOSE"):
-        try:
-            exit_price = float(text.split()[1])
+            await update.message.reply_text(f"TRADE STORED ✅\n{direction} @ {entry}")
 
-            if not trades:
-                await update.message.reply_text("No open trades")
-                return
+    # ---------------- DAILY SUMMARY ----------------
+    elif text == "DAILY":
+        total = len(daily_trades)
+        await update.message.reply_text(f"📊 DAILY SUMMARY\nTrades: {total}")
 
-            direction, entry = trades.pop(0)
-            pips = calc_pips(entry, exit_price, direction)
-
-            await update.message.reply_text(f"Pips: {pips:.1f}")
-
-        except:
-            await update.message.reply_text("Use: CLOSE 4525")
+    # ---------------- WEEKLY SUMMARY ----------------
+    elif text == "WEEKLY":
+        total = len(weekly_trades)
+        await update.message.reply_text(f"📅 WEEKLY SUMMARY\nTrades: {total}")
 
 app = Application.builder().token(TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
