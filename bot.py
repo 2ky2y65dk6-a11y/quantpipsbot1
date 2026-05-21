@@ -1,56 +1,88 @@
 import os
-from datetime import datetime, timedelta
+import re
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-trades = []
+active_trade = None
 
-daily_trades = []
-weekly_trades = []
+def extract_zone(text):
+    match = re.search(r"(\d+\.?\d*)\s*-\s*(\d+\.?\d*)", text)
+    if match:
+        return (float(match.group(1)) + float(match.group(2))) / 2
+    return None
 
-def extract_price(text):
-    import re
-    nums = re.findall(r"\d+\.?\d*", text)
-    return [float(n) for n in nums]
+def extract_numbers(text):
+    return [float(x) for x in re.findall(r"\d+\.?\d*", text)]
 
-def calc_pips(entry, exit_price, direction):
-    return (exit_price - entry) * 10000 if direction == "BUY" else (entry - exit_price) * 10000
+def extract_targets(text):
+    # handles: TP1, Targets, 🥇TP1 etc.
+    nums = re.findall(r"(?:TP\d*|TARGETS?)\D*(\d+\.?\d*)", text)
+    if nums:
+        return [float(x) for x in nums]
+
+    # fallback: after "TARGETS"
+    if "TARGET" in text:
+        return extract_numbers(text)
+
+    return []
+
+def extract_sl(text):
+    match = re.search(r"SL[^0-9]*([\d.]+)", text)
+    if match:
+        return float(match.group(1))
+    return None
+
+def calc_pips(entry, price):
+    return (price - entry) * 10000  # simplified gold calc
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.upper()
-    chat_id = update.message.chat_id
+    global active_trade
 
-    # ---------------- SIGNAL DETECTION ----------------
+    text = update.message.text.upper()
+
+    # ---------------- NEW TRADE ----------------
     if "BUY" in text or "SELL" in text:
         direction = "BUY" if "BUY" in text else "SELL"
-        prices = extract_price(text)
 
-        if prices:
-            entry = prices[0]
+        entry = extract_zone(text)
+        if not entry:
+            nums = extract_numbers(text)
+            entry = nums[0] if nums else None
 
-            trade = {
-                "direction": direction,
-                "entry": entry,
-                "time": datetime.now()
-            }
+        active_trade = {
+            "direction": direction,
+            "entry": entry,
+            "tp": extract_targets(text),
+            "sl": extract_sl(text)
+        }
 
-            trades.append(trade)
-            daily_trades.append(trade)
-            weekly_trades.append(trade)
+        await update.message.reply_text(
+            f"TRADE STORED ✅\n{direction}\nEntry: {entry}\nTPs: {active_trade['tp']}\nSL: {active_trade['sl']}"
+        )
+        return
 
-            await update.message.reply_text(f"TRADE STORED ✅\n{direction} @ {entry}")
+    # ---------------- TP HIT ----------------
+    if "TP" in text and "HIT" in text:
+        if not active_trade:
+            await update.message.reply_text("No active trade")
+            return
 
-    # ---------------- DAILY SUMMARY ----------------
-    elif text == "DAILY":
-        total = len(daily_trades)
-        await update.message.reply_text(f"📊 DAILY SUMMARY\nTrades: {total}")
+        nums = extract_numbers(text)
+        price = nums[-1] if nums else None
 
-    # ---------------- WEEKLY SUMMARY ----------------
-    elif text == "WEEKLY":
-        total = len(weekly_trades)
-        await update.message.reply_text(f"📅 WEEKLY SUMMARY\nTrades: {total}")
+        if not price:
+            await update.message.reply_text("Send TP HIT with price")
+            return
+
+        entry = active_trade["entry"]
+        pips = calc_pips(entry, price)
+
+        await update.message.reply_text(
+            f"🎯 TP HIT\nEntry: {entry}\nPrice: {price}\nProfit: +{pips:.1f} pips"
+        )
+        return
 
 app = Application.builder().token(TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
